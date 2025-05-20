@@ -4,9 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"path/filepath"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -43,18 +44,15 @@ func main() {
 	migrate := flag.Bool("migrate", false, "Выполнить миграцию базы данных")
 	flag.Parse()
 
-
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
 
-
 	db, err := database.InitDB(cfg.GetDSN())
 	if err != nil {
 		log.Fatalf("Ошибка подключения к базе данных: %v", err)
 	}
-
 
 	if *migrate {
 		if err := database.Migrate(db); err != nil {
@@ -62,40 +60,37 @@ func main() {
 		}
 	}
 
-
 	notifyQueue, err := queue.NewNotificationQueue(cfg)
 	if err != nil {
 		log.Fatalf("Ошибка подключения к RabbitMQ: %v", err)
 	}
 	defer notifyQueue.Close()
 
-
 	router := gin.Default()
-
+	router.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"http://localhost:3000"}, // URL вашего фронтенда
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			"Content-Length",
+			"Accept-Encoding",
+			"X-CSRF-Token",
+			"Authorization",
+			"Accept",
+			"Cache-Control",
+			"X-Requested-With",
+		},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	router.LoadHTMLGlob(filepath.Join("templates", "*.html"))
 
-
-	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	})
-
-
 	routes.SetupRoutes(router, db, cfg, notifyQueue)
 
-
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
 
 	serverAddr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Printf("Сервер запущен на %s", serverAddr)
