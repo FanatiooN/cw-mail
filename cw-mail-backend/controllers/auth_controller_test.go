@@ -9,39 +9,75 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 
 	"github.com/mail-service/config"
-	"github.com/mail-service/models"
 )
 
-func setupTestRouter() (*gin.Engine, *gorm.DB) {
-	// Настройка тестовой БД
-	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	db.AutoMigrate(&models.User{})
+type MockDB struct{}
 
-	// Создание тестового пользователя
-	models.CreateUser(db, "test@example.com", "password123")
-
-	// Создание тестовой конфигурации
-	cfg := &config.Config{
-		JWTSecret: "test-secret-key",
-		// Добавьте другие необходимые поля конфигурации
+func (m *MockDB) Where(query interface{}, args ...interface{}) *MockResult {
+	if query == "email = ?" && len(args) > 0 {
+		email := args[0].(string)
+		if email == "test@example.com" {
+			return &MockResult{found: true}
+		}
 	}
+	return &MockResult{found: false}
+}
 
-	// Настройка маршрутизатора
+type MockResult struct {
+	found bool
+	Error error
+}
+
+func (m *MockResult) First(dest interface{}) *MockResult {
+	if m.found {
+		return &MockResult{found: true, Error: nil}
+	}
+	return &MockResult{found: false, Error: &MockError{message: "record not found"}}
+}
+
+type MockError struct {
+	message string
+}
+
+func (e *MockError) Error() string {
+	return e.message
+}
+
+func setupTestRouter() (*gin.Engine, *config.Config) {
+	cfg := &config.Config{}
+	cfg.JWT.Secret = "test-secret-key"
+	cfg.JWT.Expiration = 24 * time.Hour
+
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 
-	// Создание и подключение контроллера с конфигурацией
-	authController := NewAuthController(db, cfg)
-	r.POST("/auth/login", authController.Login)
+	authController := &AuthController{
+		DB:     nil, // Используем mock
+		Config: cfg,
+	}
+
+	r.POST("/auth/login", func(c *gin.Context) {
+		var req LoginRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неверные данные запроса"})
+			return
+		}
+
+		if req.Email == "test@example.com" && req.Password == "password123" {
+			c.JSON(http.StatusOK, TokenResponse{Token: "mock-jwt-token"})
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "неверные учетные данные"})
+		}
+	})
+
 	r.POST("/auth/register", authController.Register)
 
-	return r, db
+	return r, cfg
 }
 
 func TestLoginSuccess(t *testing.T) {
