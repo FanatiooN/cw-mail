@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:8080/api';
+export const API_URL = 'http://83.217.210.25:8080/api';
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');
@@ -8,9 +8,21 @@ const getAuthHeader = () => {
   };
 };
 
+const fetchWithCredentials = async (url, options = {}) => {
+  const defaultOptions = {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers
+    }
+  };
+
+  return fetch(url, { ...defaultOptions, ...options });
+};
+
 export const getInboxMessages = async () => {
   try {
-    const response = await fetch(`${API_URL}/messages/inbox`, {
+    const response = await fetchWithCredentials(`${API_URL}/messages/inbox`, {
       headers: getAuthHeader()
     });
     

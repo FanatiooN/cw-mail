@@ -68,8 +68,13 @@ func main() {
 
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:3000"}, // URL вашего фронтенда
-		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		
+		AllowOrigins: []string{
+			"http://localhost:3000",
+			"http://83.217.210.25:3000",
+			"http://83.217.210.25",
+		},
+                AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowHeaders: []string{
 			"Origin",
 			"Content-Type",

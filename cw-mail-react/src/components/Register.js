@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail } from 'lucide-react';
+import { API_URL } from '../services/api';
 
 function Register() {
   const [name, setName] = useState('');
@@ -24,7 +25,7 @@ function Register() {
     }
     
     try {
-      const response = await fetch('http://localhost:8080/api/auth/register', {
+      const response = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -34,6 +35,7 @@ function Register() {
           email,
           password
         }),
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -41,7 +43,6 @@ function Register() {
       if (!response.ok) {
         throw new Error(data.message || 'Ошибка при регистрации');
       }
-
 
       navigate('/login');
     } catch (error) {
