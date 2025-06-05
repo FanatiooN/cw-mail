@@ -22,7 +22,7 @@ type Message struct {
 	Sender     User      `json:"sender" gorm:"foreignKey:SenderID"`
 	Receiver   User      `json:"receiver" gorm:"foreignKey:ReceiverID"`
 }
-
+	
 
 func SendMessage(db *gorm.DB, senderID uint, receiverEmail, subject, body string, readLimit int) (*Message, error) {
 	var receiver User

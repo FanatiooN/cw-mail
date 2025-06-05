@@ -14,7 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 type JWTClaims struct {
 	UserID uint   `json:"user_id"`
 	Email  string `json:"email"`
@@ -22,17 +21,14 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-
 func JWTAuthMiddleware(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "отсутствует заголовок Authorization"})
 			c.Abort()
 			return
 		}
-
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
@@ -44,9 +40,7 @@ func JWTAuthMiddleware(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 		tokenString := parts[1]
 		claims := &JWTClaims{}
 
-
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
 			}
@@ -69,6 +63,11 @@ func JWTAuthMiddleware(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		if !models.IsValidRole(claims.Role) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "недействительная роль в токене"})
+			c.Abort()
+			return
+		}
 
 		var user models.User
 		if err := db.First(&user, claims.UserID).Error; err != nil {
@@ -77,17 +76,72 @@ func JWTAuthMiddleware(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		if user.Role != claims.Role {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "роль в токене не соответствует роли пользователя"})
+			c.Abort()
+			return
+		}
 
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
 		c.Set("user_role", claims.Role)
+		c.Set("user", user)
 
 		c.Next()
 	}
 }
 
+func RequireRole(allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userRole, exists := c.Get("user_role")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "роль пользователя не найдена"})
+			c.Abort()
+			return
+		}
+
+		role, ok := userRole.(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "неверный тип роли"})
+			c.Abort()
+			return
+		}
+
+		for _, allowedRole := range allowedRoles {
+			if role == allowedRole {
+				c.Next()
+				return
+			}
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{"error": "недостаточно прав доступа"})
+		c.Abort()
+	}
+}
+
+func RequireAdmin() gin.HandlerFunc {
+	return RequireRole(models.RoleAdmin)
+}
+
+func GetCurrentUser(c *gin.Context) (*models.User, error) {
+	user, exists := c.Get("user")
+	if !exists {
+		return nil, errors.New("пользователь не найден в контексте")
+	}
+
+	currentUser, ok := user.(models.User)
+	if !ok {
+		return nil, errors.New("неверный тип пользователя в контексте")
+	}
+
+	return &currentUser, nil
+}
 
 func GenerateToken(user *models.User, cfg *config.Config) (string, error) {
+	if !models.IsValidRole(user.Role) {
+		return "", errors.New("недействительная роль пользователя")
+	}
+
 	expirationTime := time.Now().Add(cfg.JWT.Expiration)
 
 	claims := &JWTClaims{
