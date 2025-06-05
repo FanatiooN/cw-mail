@@ -3,7 +3,6 @@ package models
 import (
 	"testing"
 
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -72,5 +71,43 @@ func TestCreateUser(t *testing.T) {
 
 	if found.ID != user.ID {
 		t.Errorf("Неверный ID пользователя: ожидался %d, получен %d", user.ID, found.ID)
+	}
+}
+
+func TestIsValidRole(t *testing.T) {
+	// Валидные роли
+	if !IsValidRole(RoleUser) {
+		t.Error("RoleUser должна быть валидной")
+	}
+	if !IsValidRole(RoleAdmin) {
+		t.Error("RoleAdmin должна быть валидной")
+	}
+
+	// Невалидные роли
+	if IsValidRole("invalid") {
+		t.Error("'invalid' не должна быть валидной ролью")
+	}
+	if IsValidRole("") {
+		t.Error("Пустая строка не должна быть валидной ролью")
+	}
+}
+
+func TestUserRoles(t *testing.T) {
+	// Тест администратора
+	admin := &User{Role: RoleAdmin}
+	if !admin.IsAdmin() {
+		t.Error("IsAdmin() должен возвращать true для администратора")
+	}
+	if !admin.CanModifyRoles() {
+		t.Error("CanModifyRoles() должен возвращать true для администратора")
+	}
+
+	// Тест обычного пользователя
+	user := &User{Role: RoleUser}
+	if user.IsAdmin() {
+		t.Error("IsAdmin() должен возвращать false для обычного пользователя")
+	}
+	if user.CanModifyRoles() {
+		t.Error("CanModifyRoles() должен возвращать false для обычного пользователя")
 	}
 }
